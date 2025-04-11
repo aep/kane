@@ -1,8 +1,10 @@
 package kane
 
 import (
-	"github.com/aep/kane/kv"
 	"net/url"
+	"path/filepath"
+
+	"github.com/aep/kane/kv"
 )
 
 type DB struct {
@@ -10,7 +12,6 @@ type DB struct {
 }
 
 func Init(connect ...string) (*DB, error) {
-
 	if len(connect) < 1 {
 		connect = append(connect, "tikv://localhost:2379")
 	}
@@ -20,7 +21,18 @@ func Init(connect ...string) (*DB, error) {
 		return nil, err
 	}
 
-	k, err := kv.NewTikv(uri.Host)
+	var k kv.KV
+
+	switch uri.Scheme {
+	case "tikv":
+		k, err = kv.NewTikv(uri.Host)
+	case "pebble":
+		path := filepath.Join(uri.Host, uri.Path)
+		k, err = kv.NewPebble(path)
+	default:
+		k, err = kv.NewTikv(uri.Host)
+	}
+
 	if err != nil {
 		return nil, err
 	}
