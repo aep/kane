@@ -1,0 +1,34 @@
+name: Go Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache: true
+        
+    - name: Set up Docker Compose
+      uses: ndeloof/install-compose-action@v0.0.1
+
+    - name: Start Docker Compose
+      run: docker-compose up -d
+    
+    - name: Wait for Services
+      run: sleep 10
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./...

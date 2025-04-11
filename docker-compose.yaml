@@ -1,0 +1,44 @@
+services:
+  pd:
+    container_name: pd 
+    image: pingcap/pd:latest
+    network_mode: host
+    command:
+        - --name=pd
+        - --data-dir=/data
+        - --client-urls=http://0.0.0.0:2379
+        - --advertise-client-urls=http://127.0.0.1:2379
+        - --peer-urls=http://0.0.0.0:2380
+        - --log-file=/dev/stderr
+    restart: on-failure
+  tikv:
+    container_name: tikv
+    image: pingcap/tikv:latest
+    network_mode: host
+    command:
+        - --addr=0.0.0.0:20160
+        - --advertise-addr=127.0.0.1:20160
+        - --pd=http://127.0.0.1:2379
+        - --data-dir=/data
+        - --log-file=/dev/stderr
+    restart: on-failure
+    depends_on:
+      - pd
+  nats:
+    container_name: nats
+    image: nats:latest
+    network_mode: host
+    command: "--js"
+    restart: on-failure
+  # Jaeger for OpenTelemetry tracing
+  jaeger:
+    container_name: jaeger
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "4317:4317"   # OTLP gRPC (OpenTelemetry protocol)
+      - "4318:4318"   # OTLP HTTP
+      - "16686:16686" # Jaeger UI
+      - "14250:14250" # Model used for tracing
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: on-failure

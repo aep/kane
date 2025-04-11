@@ -7,13 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble"
 )
 
 type PebbleKV struct {
-	db *pebble.DB
-	mu sync.RWMutex // Global RWLock to protect CAS
+	db         *pebble.DB
+	mu         sync.RWMutex  // Global RWLock to protect CAS
+	vectorTime atomic.Uint64 // Vector time counter
 }
 
 func NewPebble(path string) (KV, error) {
@@ -26,7 +28,30 @@ func NewPebble(path string) (KV, error) {
 		return nil, err
 	}
 
-	return &PebbleKV{db: db}, nil
+	pKV := &PebbleKV{db: db}
+
+	// Initialize vector time from storage if it exists
+	vtKey := []byte{'_', 0xff, 'v', 't', 's'}
+	value, closer, err := db.Get(vtKey)
+	if err == nil {
+		if len(value) == 8 {
+			currentValue := uint64(value[0]) |
+				uint64(value[1])<<8 |
+				uint64(value[2])<<16 |
+				uint64(value[3])<<24 |
+				uint64(value[4])<<32 |
+				uint64(value[5])<<40 |
+				uint64(value[6])<<48 |
+				uint64(value[7])<<56
+			pKV.vectorTime.Store(currentValue + 100)
+		}
+		closer.Close()
+	} else if err != pebble.ErrNotFound {
+		db.Close()
+		return nil, err
+	}
+
+	return pKV, nil
 }
 
 func (p *PebbleKV) Ping(ctx context.Context) error {
@@ -171,15 +196,19 @@ func (p *PebbleKV) CAS(ctx context.Context, key, previousValue, newValue []byte,
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Get the current value
-	currentValue, err := p.Get(ctx, key)
-	if err != nil && err != pebble.ErrNotFound {
-		return nil, false, err
-	}
+	value, closer, err := p.db.Get(key)
 
-	// Handle not found case
-	if err == pebble.ErrNotFound {
+	var currentValue []byte
+	if err != nil {
+		if err != pebble.ErrNotFound {
+			return nil, false, err
+		}
+		// Handle not found case
 		currentValue = nil
+	} else {
+		// We need to copy the value since we'll close the closer
+		currentValue = bytes.Clone(value)
+		closer.Close()
 	}
 
 	// If previousValue is nil, expect the key not to exist
@@ -203,6 +232,31 @@ func (p *PebbleKV) CAS(ctx context.Context, key, previousValue, newValue []byte,
 	return nil, true, nil
 }
 
-func (k *PebbleKV) GetVectorTime(ctx context.Context) (uint64, error) {
-	panic("implement me. some persisted counter")
+func (p *PebbleKV) GetVectorTime(ctx context.Context) (uint64, error) {
+	// Atomically increment and get the new value
+	newValue := p.vectorTime.Add(1)
+
+	if newValue%100 == 0 {
+		go p.persistVectorTime(newValue)
+	}
+
+	return newValue, nil
+}
+
+// persistVectorTime writes the current vector time to disk
+func (p *PebbleKV) persistVectorTime(value uint64) {
+	vtKey := []byte{'_', 0xff, 'v', 't', 's'}
+
+	valueBytes := []byte{
+		byte(value),
+		byte(value >> 8),
+		byte(value >> 16),
+		byte(value >> 24),
+		byte(value >> 32),
+		byte(value >> 40),
+		byte(value >> 48),
+		byte(value >> 56),
+	}
+
+	_ = p.db.Set(vtKey, valueBytes, nil)
 }
