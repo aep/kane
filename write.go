@@ -3,6 +3,7 @@ package kane
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -108,6 +109,10 @@ func (DB *DB) swap(ctx context.Context, doc any, old any, retry bool) error {
 				DB.KV.Del(ctx, pkpath)
 			}
 			break
+		}
+
+		if !retry {
+			return fmt.Errorf("conflict")
 		}
 
 		select {

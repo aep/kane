@@ -229,7 +229,7 @@ func (p *PebbleKV) CAS(ctx context.Context, key, previousValue, newValue []byte,
 		return nil, false, err
 	}
 
-	return nil, true, nil
+	return currentValue, true, nil
 }
 
 func (p *PebbleKV) GetVectorTime(ctx context.Context) (uint64, error) {
