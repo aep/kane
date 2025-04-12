@@ -7,10 +7,11 @@ import (
 	"time"
 )
 
-type Document struct {
-	// this is a monotonic global vector clock for serialization (tikv oracle), not wall time
-	VTS uint64 `json:"vts"`
+type Document interface {
+	PK() any
+}
 
+type StoredDocument struct {
 	Val     any      `json:"val"`
 	History *History `json:"history,omitempty"`
 }
@@ -20,47 +21,23 @@ type History struct {
 	Updated *time.Time `json:"updated,omitempty"`
 }
 
-func getIDFromAny(val any) ([]byte, error) {
-	// Use reflection to check for ID field
-	v := reflect.ValueOf(val)
-
-	// Handle pointer types by dereferencing
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return nil, fmt.Errorf("nil cannot be stored")
-		}
-		v = v.Elem()
+func getPKFromAny(val any) ([]byte, error) {
+	if sdoc, ok := val.(*StoredDocument); ok {
+		val = sdoc.Val
+	}
+	if doc, ok := val.(Document); ok {
+		return indexVal(doc.PK())
 	}
 
-	// Only structs can have fields
-	if v.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("%T cannot be stored: must be struct", val)
-	}
-
-	// Look for ID field
-	idField := v.FieldByName("ID")
-	if !idField.IsValid() {
-		return nil, fmt.Errorf("%T cannot be stored: must have field with name ID", val)
-	}
-
-	b, err := indexVal(idField.Interface())
-	if err != nil {
-		return nil, fmt.Errorf("%T cannot be stored: %w", val, err)
-	}
-
-	if len(b) < 3 {
-		return nil, fmt.Errorf("%T cannot be stored: ID can't be empty", val)
-	}
-
-	return b, nil
+	return nil, fmt.Errorf("%T does not implement kane.Document: missing PK()", val)
 }
 
 func getModelFromAny(val any) string {
-	if doc, ok := val.(Document); ok {
+	if doc, ok := val.(StoredDocument); ok {
 		return getModelFromAny(doc.Val)
 	}
 
-	if doc, ok := val.(*Document); ok {
+	if doc, ok := val.(*StoredDocument); ok {
 		return getModelFromAny(doc.Val)
 	}
 

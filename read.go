@@ -9,33 +9,25 @@ import (
 	"github.com/aep/kane/kv"
 )
 
-func (DB *DB) Get(ctx context.Context, doc any, key string, op Filter) error {
+func (DB *DB) Get(ctx context.Context, doc any, op Filter) error {
 	lifetime := &kv.Lifetime{}
 	defer lifetime.Close()
 
 	model := getModelFromAny(doc)
 
-	for _, ch := range key {
-		if ch == 0xff {
-			return fmt.Errorf("invalid key: cannot contain 0xff")
-		}
-	}
-
-	var id []byte
-	for k, err := range DB.find(ctx, model, key, op) {
+	var ots []byte
+	for k, err := range DB.find(ctx, model, op) {
 		if err != nil {
 			return err
 		}
-		id = k
+		ots = k
 		break
 	}
-	if id == nil {
+	if ots == nil {
 		return fmt.Errorf("not found")
 	}
 
-	path := append([]byte{'o', 0xff}, model...)
-	path = append(path, 0xff)
-	path = append(path, []byte(id)...)
+	path := append([]byte{'o', 0xff}, ots...)
 	path = append(path, 0xff)
 
 	b, err := DB.KV.Get(ctx, path)
@@ -43,8 +35,8 @@ func (DB *DB) Get(ctx context.Context, doc any, key string, op Filter) error {
 		return err
 	}
 
-	if !strings.HasPrefix(reflect.TypeOf(doc).String(), "*kane.Document") {
-		doc = &Document{Val: doc}
+	if !strings.HasPrefix(reflect.TypeOf(doc).String(), "*kane.StoredDocument") {
+		doc = &StoredDocument{Val: doc}
 	}
 
 	err = deserializeStore(b, &doc)

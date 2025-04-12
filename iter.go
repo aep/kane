@@ -6,12 +6,12 @@ import (
 	"reflect"
 )
 
-func Iter[Val any](ctx context.Context, DB *DB, key string, op Filter) iter.Seq2[Val, error] {
+func Iter[Val any](ctx context.Context, DB *DB, op Filter) iter.Seq2[Val, error] {
 	var val Val
 	model := getModelFromAny(val)
 
 	return func(yield func(Val, error) bool) {
-		for id, err := range DB.find(ctx, model, key, op) {
+		for id, err := range DB.find(ctx, model, op) {
 
 			var rval Val
 			if err != nil {
@@ -20,9 +20,7 @@ func Iter[Val any](ctx context.Context, DB *DB, key string, op Filter) iter.Seq2
 				}
 			}
 
-			path2 := append([]byte{'o', 0xff}, model...)
-			path2 = append(path2, 0xff)
-			path2 = append(path2, []byte(id)...)
+			path2 := append([]byte{'o', 0xff}, id...)
 			path2 = append(path2, 0xff)
 
 			b, err := DB.KV.Get(ctx, path2)
@@ -30,11 +28,11 @@ func Iter[Val any](ctx context.Context, DB *DB, key string, op Filter) iter.Seq2
 				continue
 			}
 
-			var doc *Document
-			if reflect.TypeOf(rval) == reflect.TypeOf(Document{}) {
-				doc = any(&rval).(*Document)
+			var doc *StoredDocument
+			if reflect.TypeOf(rval) == reflect.TypeOf(StoredDocument{}) {
+				doc = any(&rval).(*StoredDocument)
 			} else {
-				doc = &Document{Val: &rval}
+				doc = &StoredDocument{Val: &rval}
 			}
 
 			err = deserializeStore(b, doc)

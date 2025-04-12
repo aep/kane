@@ -19,15 +19,12 @@ const (
 	ValueBool
 )
 
-func (DB *DB) index(ctx context.Context, doc *Document, model []byte, id []byte, creating bool) error {
+func (DB *DB) index(ctx context.Context, doc *StoredDocument, model []byte, id []byte, creating bool) error {
 	path := append([]byte{'f', 0xff}, model...)
 	path = append(path, 0xff)
+	path = append(path, '.')
 
-	var vts [8]byte
-	binary.LittleEndian.PutUint64(vts[:], doc.VTS)
-	postfix := append([]byte{0xff}, vts[:]...)
-	postfix = append(postfix, 0xff)
-	postfix = append(postfix, id...)
+	postfix := append([]byte{0xff}, id[:]...)
 	postfix = append(postfix, 0xff)
 
 	return DB.indexI(ctx, doc.Val, path, postfix, creating)
@@ -66,7 +63,7 @@ func (DB *DB) indexI(ctx context.Context, obj any, path []byte, postfix []byte, 
 
 			if safe {
 				path2 := bytes.Clone(path)
-				if path2[len(path)-1] != 0xff {
+				if path2[len(path)-1] != '.' {
 					path2 = append(path2, '.')
 				}
 				path2 = append(path2, kbin...)
@@ -93,7 +90,7 @@ func (DB *DB) indexI(ctx context.Context, obj any, path []byte, postfix []byte, 
 
 			if safe {
 				path2 := bytes.Clone(path)
-				if path2[len(path)-1] != 0xff {
+				if path2[len(path)-1] != '.' {
 					path2 = append(path2, '.')
 				}
 				path2 = append(path2, kbin...)
@@ -312,7 +309,7 @@ func (DB *DB) indexStruct(ctx context.Context, obj any, path []byte, postfix []b
 		}
 
 		path2 := bytes.Clone(path)
-		if path2[len(path)-1] != 0xff {
+		if path2[len(path)-1] != '.' {
 			path2 = append(path2, '.')
 		}
 		path2 = append(path2, kbin...)

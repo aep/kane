@@ -12,49 +12,54 @@ type Filter struct {
 
 	start []byte
 	end   []byte
-
-	optimizationIDEq []byte
 }
 
-func Eq(val any) Filter {
-	start, err := indexVal(val)
+func Eq(key string, val any) Filter {
+	for _, ch := range key {
+		if ch == 0xff {
+			return Filter{err: fmt.Errorf("invalid key: cannot contain 0xff")}
+		}
+	}
+
+	valb, err := indexVal(val)
 	if err != nil {
 		return Filter{err: err}
 	}
 
+	start := append([]byte{'.'}, key...)
+	start = append(start, 0xff)
+	start = append(start, valb...)
 	start = append(start, 0xff)
 	start = append(start, 0x00)
 	end := bytes.Clone(start)
 	end[len(end)-1] = 0xff
 
 	return Filter{
-		start:            start,
-		end:              end,
-		optimizationIDEq: start[:len(start)-2],
+		start: start,
+		end:   end,
 	}
 }
 
-func (DB *DB) find(ctx context.Context, model string, key string, op Filter) iter.Seq2[[]byte, error] {
-	if op.err != nil {
-		return func(yield func([]byte, error) bool) {
-			yield(nil, op.err)
-		}
-	}
-
-	if key == "ID" && op.optimizationIDEq != nil {
-		return func(yield func([]byte, error) bool) {
-			yield(op.optimizationIDEq, nil)
-		}
-	}
-
+func Has(key string) Filter {
 	for _, ch := range key {
 		if ch == 0xff {
-			return func(yield func([]byte, error) bool) {
-				yield(nil, fmt.Errorf("invalid key: cannot contain 0xff"))
-			}
+			return Filter{err: fmt.Errorf("invalid key: cannot contain 0xff")}
 		}
 	}
 
+	start := append([]byte{'.'}, key...)
+	start = append(start, 0xff)
+	start = append(start, 0x00)
+	end := bytes.Clone(start)
+	end[len(end)-1] = 0xff
+
+	return Filter{
+		start: start,
+		end:   end,
+	}
+}
+
+func (DB *DB) find(ctx context.Context, model string, op Filter) iter.Seq2[[]byte, error] {
 	for _, ch := range model {
 		if ch == 0xff {
 			return func(yield func([]byte, error) bool) {
@@ -65,10 +70,13 @@ func (DB *DB) find(ctx context.Context, model string, key string, op Filter) ite
 
 	start := append([]byte{'f', 0xff}, model...)
 	start = append(start, 0xff)
-	start = append(start, []byte(key)...)
-	start = append(start, 0xff)
-
 	end := bytes.Clone(start)
+
+	if op.err != nil {
+		return func(yield func([]byte, error) bool) {
+			yield(nil, op.err)
+		}
+	}
 	start = append(start, op.start...)
 	end = append(end, op.end...)
 
